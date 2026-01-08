@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abstrakt - Product Updates</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    <style>
+        :root {
+            --completed: #2A7F7A; --completed-bg: #E0F0EE;
+            --adopting: #4FBDBA; --adopting-bg: #E8F8F7;
+            --qa: #2E86AB; --qa-bg: #E3F1F7;
+            --building: #54B4D3; --building-bg: #E0F4FA;
+            --scoping: #8B7BA5; --scoping-bg: #F0EDF5;
+            --backlog: #6B7280; --backlog-bg: #F3F4F6;
+            --urgent: #E63946; --urgent-bg: #FCE8E9;
+            --blocked: #F18F01; --blocked-bg: #FEF0E0;
+            --bg: #F5F5F5; --card: #FFFFFF; --text: #1F2937; --text-secondary: #6B7280; --border: #E5E7EB; --abstrakt-dark: #1a1a1a;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+        .app-header { background: white; padding: 16px 40px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+        .app-header-content { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo-area { display: flex; align-items: center; gap: 16px; }
+        .logo img { height: 32px; width: auto; }
+        .logo-divider { width: 1px; height: 28px; background: var(--border); }
+        .app-title { font-size: 18px; font-weight: 600; color: var(--text); }
+        .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .btn { border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+        .btn-primary { background: var(--abstrakt-dark); color: white; }
+        .btn-primary:hover { background: #333; }
+        .btn-secondary { background: var(--completed); color: white; }
+        .btn-secondary:hover { background: #45a9a6; }
+        .file-input { display: none; }
+        .file-name { font-size: 13px; color: var(--text-secondary); }
+        .view-mode { font-size: 12px; padding: 6px 12px; background: var(--completed-bg); color: var(--completed); border-radius: 6px; font-weight: 600; }
+        .tabs-container { background: white; border-bottom: 1px solid var(--border); position: sticky; top: 65px; z-index: 90; }
+        .tabs { max-width: 1400px; margin: 0 auto; display: flex; padding: 0 40px; overflow-x: auto; }
+        .tab { padding: 16px 24px; font-size: 14px; font-weight: 600; color: var(--text-secondary); cursor: pointer; border: none; border-bottom: 3px solid transparent; background: none; font-family: inherit; white-space: nowrap; }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--text); border-bottom-color: var(--abstrakt-dark); }
+        .tab-content { display: none; padding: 40px; max-width: 1400px; margin: 0 auto; }
+        .tab-content.active { display: block; }
+        .dashboard-header { margin-bottom: 32px; }
+        .dashboard-header-content { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+        .dashboard-header h1 { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { font-size: 16px; color: var(--text-secondary); }
+        .tags-grid { display: flex; gap: 16px; }
+        .tag-card { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); cursor: pointer; position: relative; overflow: hidden; transition: all 0.2s; min-width: 120px; }
+        .tag-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; }
+        .tag-card.urgent::before { background: var(--urgent); }
+        .tag-card.blocked::before { background: var(--blocked); }
+        .tag-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+        .tag-card.active { box-shadow: 0 0 0 2px var(--abstrakt-dark); }
+        .tag-card .stat-number { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+        .tag-card.urgent .stat-number { color: var(--urgent); }
+        .tag-card.blocked .stat-number { color: var(--blocked); }
+        .tag-card .stat-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); cursor: pointer; position: relative; overflow: hidden; transition: all 0.2s; }
+        .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; }
+        .stat-card.completed::before { background: var(--completed); }
+        .stat-card.adopting::before { background: var(--adopting); }
+        .stat-card.qa::before { background: var(--qa); }
+        .stat-card.building::before { background: var(--building); }
+        .stat-card.scoping::before { background: var(--scoping); }
+        .stat-card.backlog::before { background: var(--backlog); }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+        .stat-number { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+        .stat-card.completed .stat-number { color: var(--completed); }
+        .stat-card.adopting .stat-number { color: var(--adopting); }
+        .stat-card.qa .stat-number { color: var(--qa); }
+        .stat-card.building .stat-number { color: var(--building); }
+        .stat-card.scoping .stat-number { color: var(--scoping); }
+        .stat-card.backlog .stat-number { color: var(--backlog); }
+        .stat-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .tags-summary { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); margin-bottom: 32px; }
+        .tags-summary h3 { font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .tags-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag-pill { padding: 6px 12px; border-radius: 100px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .tag-pill.urgent { background: var(--urgent-bg); color: var(--urgent); }
+        .tag-pill.blocked { background: var(--blocked-bg); color: var(--blocked); }
+        .tag-pill.default { background: var(--backlog-bg); color: var(--backlog); }
+        .tag-pill:hover { transform: scale(1.05); }
+        .tag-pill.active { box-shadow: 0 0 0 2px var(--abstrakt-dark); }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
+        .section-title { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; }
+        .filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-tab { padding: 8px 16px; border: 1px solid var(--border); background: white; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; font-family: inherit; transition: all 0.2s; }
+        .filter-tab:hover { border-color: var(--text-secondary); }
+        .filter-tab.active { background: var(--abstrakt-dark); color: white; border-color: var(--abstrakt-dark); }
+        .items-grid { display: grid; gap: 12px; }
+        .item-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; transition: all 0.2s; }
+        .item-card:hover { border-color: var(--text-secondary); }
+        .item-card-header { padding: 16px 20px; display: grid; grid-template-columns: auto 1fr auto auto; gap: 16px; align-items: center; cursor: pointer; }
+        .item-card.expanded .item-card-header { border-bottom: 1px solid var(--border); }
+        .status-badge { padding: 6px 12px; border-radius: 100px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+        .status-badge.completed { background: var(--completed-bg); color: var(--completed); }
+        .status-badge.adopting { background: var(--adopting-bg); color: var(--adopting); }
+        .status-badge.qa { background: var(--qa-bg); color: var(--qa); }
+        .status-badge.building { background: var(--building-bg); color: var(--building); }
+        .status-badge.scoping { background: var(--scoping-bg); color: var(--scoping); }
+        .status-badge.backlog { background: var(--backlog-bg); color: var(--backlog); }
+        .item-content { min-width: 0; }
+        .item-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+        .item-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
+        .item-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+        .mini-tag { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+        .mini-tag.urgent { background: var(--urgent-bg); color: var(--urgent); }
+        .mini-tag.blocked { background: var(--blocked-bg); color: var(--blocked); }
+        .mini-tag.default { background: var(--backlog-bg); color: var(--backlog); }
+        .item-arrow { width: 32px; height: 32px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); transition: all 0.2s; }
+        .item-card:hover .item-arrow { background: var(--abstrakt-dark); color: white; }
+        .item-card.expanded .item-arrow { transform: rotate(90deg); }
+        .item-details { display: none; padding: 20px; background: var(--bg); }
+        .item-card.expanded .item-details { display: block; }
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .detail-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .detail-value { font-size: 14px; color: var(--text); }
+        .detail-value.empty { color: var(--text-secondary); font-style: italic; }
+        .detail-notes { grid-column: 1 / -1; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .kanban-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+        .kanban-column { background: rgba(255,255,255,0.5); border-radius: 12px; display: flex; flex-direction: column; min-height: 300px; }
+        .column-header { padding: 14px; border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: space-between; }
+        .column-header.completed { background: var(--completed-bg); border-bottom: 3px solid var(--completed); }
+        .column-header.adopting { background: var(--adopting-bg); border-bottom: 3px solid var(--adopting); }
+        .column-header.qa { background: var(--qa-bg); border-bottom: 3px solid var(--qa); }
+        .column-header.building { background: var(--building-bg); border-bottom: 3px solid var(--building); }
+        .column-header.scoping { background: var(--scoping-bg); border-bottom: 3px solid var(--scoping); }
+        .column-header.backlog { background: var(--backlog-bg); border-bottom: 3px solid var(--backlog); }
+        .column-title { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .column-title.completed { color: var(--completed); }
+        .column-title.adopting { color: var(--adopting); }
+        .column-title.qa { color: var(--qa); }
+        .column-title.building { color: var(--building); }
+        .column-title.scoping { color: var(--scoping); }
+        .column-title.backlog { color: var(--backlog); }
+        .column-count { background: rgba(0,0,0,0.1); padding: 3px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+        .column-cards { padding: 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; max-height: 500px; }
+        .kanban-card { background: var(--card); border-radius: 8px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.06); }
+        .kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .kanban-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+        .kanban-card-title { font-weight: 600; font-size: 13px; line-height: 1.3; }
+        .kanban-card-meta { font-size: 11px; color: var(--text-secondary); }
+        .kanban-card-tags { display: flex; gap: 4px; margin-top: 6px; }
+        .urgent-badge { background: var(--urgent); color: white; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+        .blocked-badge { background: var(--blocked); color: white; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+        .empty-column { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary); font-size: 13px; opacity: 0.6; }
+        .department-section { margin-bottom: 32px; }
+        .department-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: var(--card); border-radius: 12px 12px 0 0; border: 1px solid var(--border); border-bottom: none; flex-wrap: wrap; gap: 12px; }
+        .department-name { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; }
+        .department-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+        .dept-stat { font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: 600; }
+        .dept-stat.completed { background: var(--completed-bg); color: var(--completed); }
+        .dept-stat.adopting { background: var(--adopting-bg); color: var(--adopting); }
+        .dept-stat.qa { background: var(--qa-bg); color: var(--qa); }
+        .dept-stat.building { background: var(--building-bg); color: var(--building); }
+        .dept-stat.scoping { background: var(--scoping-bg); color: var(--scoping); }
+        .dept-stat.backlog { background: var(--backlog-bg); color: var(--backlog); }
+        .department-items { background: var(--card); border: 1px solid var(--border); border-radius: 0 0 12px 12px; }
+        .department-item { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .department-item:last-child { border-bottom: none; }
+        .topics-grid { display: grid; gap: 16px; }
+        .topic-card { background: var(--card); border-radius: 12px; padding: 24px; border: 2px solid var(--border); }
+        .topic-card:hover { border-color: var(--building); }
+        .topic-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; gap: 12px; }
+        .topic-card-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; }
+        .topic-card-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .topic-meta-item { font-size: 13px; }
+        .topic-meta-item span { color: var(--text-secondary); }
+        .topic-meta-item strong { color: var(--text); }
+        .topic-notes { margin-top: 16px; padding: 16px; background: var(--bg); border-radius: 8px; font-size: 14px; line-height: 1.6; color: var(--text-secondary); }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+        .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state h3 { font-family: 'Fraunces', serif; font-size: 20px; color: var(--text); margin-bottom: 8px; }
+        @media (max-width: 768px) {
+            .app-header { padding: 12px 20px; }
+            .tab-content { padding: 20px; }
+            .dashboard-header h1 { font-size: 28px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .item-card-header { grid-template-columns: 1fr; gap: 12px; }
+            .tabs { padding: 0 20px; }
+            .header-actions { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        <div class="app-header-content">
+            <div class="logo-area">
+                <div class="logo">
+                    <img src="data:image/webp;base64,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" alt="Abstrakt">
+                </div>
+                <div class="logo-divider"></div>
+                <div class="app-title">Product Updates</div>
+            </div>
+            <div class="header-actions">
+                <input type="file" id="file-input" class="file-input" accept=".xlsx,.xls,.csv">
+                <span class="file-name" id="file-name"></span>
+                <button class="btn btn-primary" onclick="document.getElementById('file-input').click()" id="upload-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload Data
+                </button>
+                <button class="btn btn-secondary" onclick="generateShareLink()" id="share-btn" style="display:none;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                    Lock & Share
+                </button>
+                <span class="view-mode" id="view-mode" style="display:none;">View Only</span>
+            </div>
+        </div>
+    </div>
+    <div class="tabs-container">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('dashboard')">Overview</button>
+            <button class="tab" onclick="switchTab('kanban')">Kanban</button>
+            <button class="tab" onclick="switchTab('department')">By Department</button>
+            <button class="tab" onclick="switchTab('current')">Current Topics</button>
+        </div>
+    </div>
+    <div class="tab-content active" id="dashboard-tab">
+        <div class="dashboard-header">
+            <div class="dashboard-header-content">
+                <div><h1>Product Development Overview</h1><p class="subtitle">Status of all product initiatives</p></div>
+                <div class="tags-grid" id="tags-grid"></div>
+            </div>
+        </div>
+        <div class="stats-grid" id="stats-grid"></div>
+        <div class="section-header"><h2 class="section-title">All Items</h2></div>
+        <div class="items-grid" id="items-grid"></div>
+    </div>
+    <div class="tab-content" id="kanban-tab">
+        <div class="dashboard-header"><h1>Kanban Board</h1><p class="subtitle">Workflow visualization</p></div>
+        <div id="kanban-main"></div>
+    </div>
+    <div class="tab-content" id="department-tab">
+        <div class="dashboard-header"><h1>By Department</h1><p class="subtitle">Items grouped by department supported</p></div>
+        <div id="department-content"></div>
+    </div>
+    <div class="tab-content" id="current-tab">
+        <div class="dashboard-header"><h1>Current Topics</h1><p class="subtitle">Items marked for discussion</p></div>
+        <div class="topics-grid" id="topics-grid"></div>
+    </div>
+    <script>
+        let allItems = [];
+        let currentFilter = 'all';
+        let currentTagFilter = null;
+        
+        const statusConfig = {
+            completed: { label: 'Completed', color: 'completed', order: 1 },
+            adopting: { label: 'Adopting', color: 'adopting', order: 2 },
+            qa: { label: 'QA', color: 'qa', order: 3 },
+            building: { label: 'Building', color: 'building', order: 4 },
+            scoping: { label: 'Scoping', color: 'scoping', order: 5 },
+            backlog: { label: 'Backlog', color: 'backlog', order: 6 }
+        };
+        
+        const specialTags = ['urgent', 'blocked'];
+        
+        function parseExcelData(data) {
+            return data.filter(row => row['Formal Name']).map(row => {
+                // Get status and extract tags from it
+                const rawStatus = row['Status'] || '';
+                const { status, extractedTags } = parseStatusAndTags(rawStatus);
+                
+                // Also get explicit tags from Tags column
+                const explicitTags = parseTags(row['Tags (urgent, blocked)'] || row['Tags'] || '');
+                const allTags = [...new Set([...extractedTags, ...explicitTags])];
+                
+                return {
+                    name: row['Formal Name'] || '',
+                    status: rawStatus,
+                    statusCategory: status,
+                    tags: allTags,
+                    keyTeamMembers: row['Key team members w/ houre remaining each'] || row['Key team members'] || '',
+                    departmentSupported: row['Department Supported'] || row['Department supported'] || '',
+                    metricSupported: row['Metric Supported'] || row['Metric supported'] || '',
+                    category: row['Category'] || '',
+                    originalDueDate: formatDate(row['Original due date']),
+                    estimatedDueDate: formatDate(row['Estimated Due Date'] || row['Estimated due date'] || row['Current estimated completion date']),
+                    hoursEstimated: row['Hours Estimated'] || row['Hours estimated'] || '',
+                    hoursCompleted: row['Hours Completed'] || row['Hours completed'] || '',
+                    estimatedHoursRemaining: row['Estimated Hours Remaining'] || row['Estimated hours remaining'] || '',
+                    estimatedBusinessDays: row['Estimated Business Days Remaining'] || row['Estimated business days remaining'] || '',
+                    notes: row['Notes'] || '',
+                    currentTopic: parseBoolean(row['Current Key Topic?'] || row['Current Topic'])
+                };
+            });
+        }
+        
+        function parseBoolean(val) {
+            if (!val) return false;
+            const s = String(val).toLowerCase().trim();
+            return s === 'true' || s === 'yes' || s === 'y' || s === '1';
+        }
+        
+        function parseTags(tagString) {
+            if (!tagString || tagString === 'nan') return [];
+            return tagString.toString().split(',').map(t => t.trim().toLowerCase()).filter(t => t && t !== 'nan');
+        }
+        
+        function formatDate(date) {
+            if (!date || date === 'NaT' || date === 'nan') return '';
+            
+            // Handle Excel serial date numbers (days since 1900-01-01)
+            if (typeof date === 'number' && date > 40000 && date < 60000) {
+                const excelEpoch = new Date(1899, 11, 30); // Excel epoch
+                const jsDate = new Date(excelEpoch.getTime() + date * 86400000);
+                return jsDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
+            
+            // Handle actual Date objects
+            if (date instanceof Date && !isNaN(date)) {
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
+            
+            // Handle string dates
+            const str = String(date);
+            if (str === 'NaT' || str === 'nan' || str === 'NaN') return '';
+            
+            // Try parsing string as date
+            const parsed = new Date(str);
+            if (!isNaN(parsed)) {
+                return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
+            
+            return str;
+        }
+        
+        function parseStatusAndTags(rawStatus) {
+            if (!rawStatus || rawStatus === 'nan') return { status: 'backlog', extractedTags: [] };
+            const s = rawStatus.toString().toLowerCase().trim();
+            let extractedTags = [];
+            let status = 'backlog';
+            
+            // Check for blocked (becomes a tag)
+            if (s.includes('blocked')) {
+                extractedTags.push('blocked');
+            }
+            
+            // Check for urgent (becomes a tag)
+            if (s.includes('urgent')) {
+                extractedTags.push('urgent');
+            }
+            
+            // Determine status
+            if (s === 'done' || s === 'complete' || s === 'completed') {
+                status = 'completed';
+            } else if (s.includes('adopt')) {
+                status = 'adopting';
+            } else if (s === 'qa' || s.includes('testing') || s.includes('pending final approval') || s.includes('final approval')) {
+                status = 'qa';
+            } else if (s.includes('in progress') || s.includes('build') || s.includes('development')) {
+                status = 'building';
+            } else if (s.includes('scoping')) {
+                status = 'scoping';
+            } else if (s.includes('not started') || s.includes('backlog') || s.includes('blocked')) {
+                status = 'backlog';
+            }
+            
+            return { status, extractedTags };
+        }
+        
+        function getCounts() {
+            const counts = {};
+            Object.keys(statusConfig).forEach(status => { 
+                counts[status] = allItems.filter(i => i.statusCategory === status).length; 
+            });
+            counts.total = allItems.length;
+            return counts;
+        }
+        
+        function getTagCounts() {
+            const tagCounts = {};
+            specialTags.forEach(tag => {
+                tagCounts[tag] = allItems.filter(i => i.tags.includes(tag)).length;
+            });
+            allItems.forEach(item => {
+                item.tags.forEach(tag => {
+                    if (!specialTags.includes(tag)) {
+                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    }
+                });
+            });
+            return tagCounts;
+        }
+        
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const tabIndex = { dashboard: 0, kanban: 1, department: 2, current: 3 };
+            document.querySelectorAll('.tab')[tabIndex[tabName]].classList.add('active');
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+        
+        function toggleCard(id) { 
+            document.getElementById('card-' + id).classList.toggle('expanded'); 
+        }
+        
+        function renderDashboard() {
+            const counts = getCounts();
+            let statsHtml = '';
+            ['completed', 'adopting', 'qa', 'building', 'scoping', 'backlog'].forEach(status => {
+                const config = statusConfig[status];
+                const isActive = currentFilter === status ? ' style="box-shadow: 0 0 0 2px var(--abstrakt-dark);"' : '';
+                statsHtml += '<div class="stat-card ' + config.color + '"' + isActive + ' onclick="filterDashboard(\'' + status + '\')"><div class="stat-number">' + counts[status] + '</div><div class="stat-label">' + config.label + '</div></div>';
+            });
+            document.getElementById('stats-grid').innerHTML = statsHtml;
+            
+            const tagCounts = getTagCounts();
+            let tagsHtml = '';
+            const urgentCount = tagCounts['urgent'] || 0;
+            const blockedCount = tagCounts['blocked'] || 0;
+            const urgentActive = currentTagFilter === 'urgent' ? ' active' : '';
+            const blockedActive = currentTagFilter === 'blocked' ? ' active' : '';
+            tagsHtml += '<div class="tag-card urgent' + urgentActive + '" onclick="filterByTag(\'urgent\')"><div class="stat-number">' + urgentCount + '</div><div class="stat-label">Urgent</div></div>';
+            tagsHtml += '<div class="tag-card blocked' + blockedActive + '" onclick="filterByTag(\'blocked\')"><div class="stat-number">' + blockedCount + '</div><div class="stat-label">Blocked</div></div>';
+            document.getElementById('tags-grid').innerHTML = tagsHtml;
+            
+            renderItems();
+        }
+        
+        function filterDashboard(filter) { 
+            currentFilter = filter; 
+            currentTagFilter = null;
+            renderDashboard(); 
+        }
+        
+        function filterByTag(tag) { 
+            if (currentTagFilter === tag) {
+                currentTagFilter = null;
+            } else {
+                currentTagFilter = tag;
+            }
+            currentFilter = 'all';
+            renderDashboard(); 
+        }
+        
+        function getTagClass(tag) {
+            if (tag === 'urgent') return 'urgent';
+            if (tag === 'blocked') return 'blocked';
+            return 'default';
+        }
+        
+        function renderItems() {
+            let filtered = allItems;
+            if (currentFilter !== 'all') {
+                filtered = filtered.filter(i => i.statusCategory === currentFilter);
+            }
+            if (currentTagFilter) {
+                filtered = filtered.filter(i => i.tags.includes(currentTagFilter));
+            }
+            
+            if (filtered.length === 0) {
+                document.getElementById('items-grid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>No items</h3><p>No items match the current filter</p></div>';
+                return;
+            }
+            
+            let html = '';
+            filtered.forEach((item, idx) => {
+                const config = statusConfig[item.statusCategory];
+                const tagsHtml = item.tags.map(t => '<span class="mini-tag ' + getTagClass(t) + '">' + t + '</span>').join('');
+                html += '<div class="item-card" id="card-' + idx + '"><div class="item-card-header" onclick="toggleCard(' + idx + ')"><span class="status-badge ' + config.color + '">' + config.label + '</span><div class="item-content"><div class="item-name">' + item.name + '</div><div class="item-meta">' + (item.estimatedHoursRemaining ? '<span>' + item.estimatedHoursRemaining + ' hrs remaining</span>' : '') + (item.estimatedBusinessDays ? '<span>' + item.estimatedBusinessDays + ' days</span>' : '') + '</div></div><div class="item-tags">' + tagsHtml + '</div><div class="item-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div></div><div class="item-details"><div class="details-grid"><div class="detail-item"><div class="detail-label">Key Team Members</div><div class="detail-value ' + (!item.keyTeamMembers ? 'empty' : '') + '">' + (item.keyTeamMembers || '—') + '</div></div><div class="detail-item"><div class="detail-label">Department Supported</div><div class="detail-value">' + (item.departmentSupported || '—') + '</div></div><div class="detail-item"><div class="detail-label">Metric Supported</div><div class="detail-value ' + (!item.metricSupported ? 'empty' : '') + '">' + (item.metricSupported || '—') + '</div></div><div class="detail-item"><div class="detail-label">Category</div><div class="detail-value ' + (!item.category ? 'empty' : '') + '">' + (item.category || '—') + '</div></div><div class="detail-item"><div class="detail-label">Original Due Date</div><div class="detail-value ' + (!item.originalDueDate ? 'empty' : '') + '">' + (item.originalDueDate || '—') + '</div></div><div class="detail-item"><div class="detail-label">Estimated Due Date</div><div class="detail-value ' + (!item.estimatedDueDate ? 'empty' : '') + '">' + (item.estimatedDueDate || '—') + '</div></div><div class="detail-item"><div class="detail-label">Hours Estimated</div><div class="detail-value ' + (!item.hoursEstimated ? 'empty' : '') + '">' + (item.hoursEstimated || '—') + '</div></div><div class="detail-item"><div class="detail-label">Hours Completed</div><div class="detail-value ' + (!item.hoursCompleted ? 'empty' : '') + '">' + (item.hoursCompleted || '—') + '</div></div><div class="detail-item"><div class="detail-label">Hours Remaining</div><div class="detail-value ' + (!item.estimatedHoursRemaining ? 'empty' : '') + '">' + (item.estimatedHoursRemaining || '—') + '</div></div><div class="detail-item"><div class="detail-label">Business Days Remaining</div><div class="detail-value ' + (!item.estimatedBusinessDays ? 'empty' : '') + '">' + (item.estimatedBusinessDays || '—') + '</div></div>' + (item.notes ? '<div class="detail-item detail-notes"><div class="detail-label">Notes</div><div class="detail-value">' + item.notes + '</div></div>' : '') + '</div></div></div>';
+            });
+            document.getElementById('items-grid').innerHTML = html;
+        }
+        
+        function renderKanban() {
+            const statuses = ['completed', 'adopting', 'qa', 'building', 'scoping', 'backlog'];
+            let html = '<div class="kanban-board">';
+            statuses.forEach(status => {
+                const config = statusConfig[status];
+                const items = allItems.filter(i => i.statusCategory === status);
+                let cardsHtml = items.length > 0 ? items.map(item => {
+                    const isUrgent = item.tags.includes('urgent');
+                    const isBlocked = item.tags.includes('blocked');
+                    let badges = '';
+                    if (isUrgent) badges += '<span class="urgent-badge">Urgent</span>';
+                    if (isBlocked) badges += '<span class="blocked-badge">Blocked</span>';
+                    return '<div class="kanban-card"><div class="kanban-card-header"><div class="kanban-card-title">' + item.name + '</div></div><div class="kanban-card-meta">' + (item.departmentSupported || '') + (item.estimatedBusinessDays ? ' • ' + item.estimatedBusinessDays + ' days' : '') + '</div>' + (badges ? '<div class="kanban-card-tags">' + badges + '</div>' : '') + '</div>';
+                }).join('') : '<div class="empty-column">No items</div>';
+                html += '<div class="kanban-column"><div class="column-header ' + config.color + '"><span class="column-title ' + config.color + '">' + config.label + '</span><span class="column-count">' + items.length + '</span></div><div class="column-cards">' + cardsHtml + '</div></div>';
+            });
+            html += '</div>';
+            document.getElementById('kanban-main').innerHTML = html;
+        }
+        
+        function renderDepartments() {
+            const departments = {};
+            allItems.forEach(item => {
+                const dept = item.departmentSupported || 'Unassigned';
+                if (!departments[dept]) departments[dept] = [];
+                departments[dept].push(item);
+            });
+            let html = '';
+            Object.keys(departments).sort().forEach(dept => {
+                const items = departments[dept];
+                const deptCounts = {};
+                Object.keys(statusConfig).forEach(s => { deptCounts[s] = items.filter(i => i.statusCategory === s).length; });
+                let statsHtml = '';
+                Object.keys(statusConfig).forEach(s => {
+                    if (deptCounts[s] > 0) statsHtml += '<span class="dept-stat ' + statusConfig[s].color + '">' + deptCounts[s] + ' ' + statusConfig[s].label + '</span>';
+                });
+                html += '<div class="department-section"><div class="department-header"><div class="department-name">' + dept + '</div><div class="department-stats">' + statsHtml + '</div></div><div class="department-items">';
+                items.forEach(item => {
+                    const config = statusConfig[item.statusCategory];
+                    const tagsHtml = item.tags.map(t => '<span class="mini-tag ' + getTagClass(t) + '">' + t + '</span>').join('');
+                    html += '<div class="department-item"><span class="status-badge ' + config.color + '">' + config.label + '</span><span style="flex:1;font-weight:500;">' + item.name + '</span><div class="item-tags">' + tagsHtml + '</div></div>';
+                });
+                html += '</div></div>';
+            });
+            document.getElementById('department-content').innerHTML = html || '<div class="empty-state"><div class="empty-state-icon">🏢</div><h3>No departments</h3></div>';
+        }
+        
+        function renderCurrentTopics() {
+            const currentItems = allItems.filter(i => i.currentTopic);
+            if (currentItems.length === 0) {
+                document.getElementById('topics-grid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎯</div><h3>No Current Topics</h3><p>Mark items with "Current Topic" = true in your spreadsheet</p></div>';
+                return;
+            }
+            let html = '';
+            currentItems.forEach(item => {
+                const config = statusConfig[item.statusCategory];
+                const tagsHtml = item.tags.map(t => '<span class="mini-tag ' + getTagClass(t) + '">' + t + '</span>').join('');
+                html += '<div class="topic-card"><div class="topic-card-header"><div class="topic-card-title">' + item.name + '</div><div style="display:flex;gap:8px;align-items:center;">' + tagsHtml + '<span class="status-badge ' + config.color + '">' + config.label + '</span></div></div><div class="topic-card-meta"><div class="topic-meta-item"><span>Team:</span> <strong>' + (item.keyTeamMembers || '—') + '</strong></div><div class="topic-meta-item"><span>Department:</span> <strong>' + (item.departmentSupported || '—') + '</strong></div><div class="topic-meta-item"><span>Category:</span> <strong>' + (item.category || '—') + '</strong></div><div class="topic-meta-item"><span>Est. Due:</span> <strong>' + (item.estimatedDueDate || '—') + '</strong></div><div class="topic-meta-item"><span>Hours Remaining:</span> <strong>' + (item.estimatedHoursRemaining || '—') + '</strong></div><div class="topic-meta-item"><span>Days Remaining:</span> <strong>' + (item.estimatedBusinessDays || '—') + '</strong></div></div>' + (item.notes ? '<div class="topic-notes">' + item.notes + '</div>' : '') + '</div>';
+            });
+            document.getElementById('topics-grid').innerHTML = html;
+        }
+        
+        function renderAll() { renderDashboard(); renderKanban(); renderDepartments(); renderCurrentTopics(); }
+        
+        function renderEmptyState() {
+            document.getElementById('stats-grid').innerHTML = Object.keys(statusConfig).map(s => '<div class="stat-card ' + statusConfig[s].color + '"><div class="stat-number">0</div><div class="stat-label">' + statusConfig[s].label + '</div></div>').join('');
+            document.getElementById('tags-grid').innerHTML = '<div class="tag-card urgent"><div class="stat-number">0</div><div class="stat-label">Urgent</div></div><div class="tag-card blocked"><div class="stat-number">0</div><div class="stat-label">Blocked</div></div>';
+            document.getElementById('items-grid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📤</div><h3>Upload Your Data</h3><p>Click "Upload Data" to load your Excel spreadsheet</p></div>';
+            document.getElementById('kanban-main').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📤</div><h3>Upload Your Data</h3></div>';
+            document.getElementById('department-content').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📤</div><h3>Upload Your Data</h3></div>';
+            document.getElementById('topics-grid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📤</div><h3>Upload Your Data</h3></div>';
+        }
+        
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('file-name').textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                allItems = parseExcelData(jsonData);
+                document.getElementById('share-btn').style.display = 'flex';
+                renderAll();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+        
+        function generateShareLink() {
+            try {
+                const jsonStr = JSON.stringify(allItems);
+                const compressed = LZString.compressToEncodedURIComponent(jsonStr);
+                const url = window.location.origin + window.location.pathname + '?data=' + compressed;
+                if (url.length > 32000) { alert('Data is too large to share via URL.'); return; }
+                navigator.clipboard.writeText(url).then(function() {
+                    alert('Link copied to clipboard! Share this with your team for a read-only view.');
+                }).catch(function() { prompt('Copy this link:', url); });
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+        
+        function loadFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const compressedData = params.get('data');
+            if (compressedData) {
+                try {
+                    const jsonStr = LZString.decompressFromEncodedURIComponent(compressedData);
+                    allItems = JSON.parse(jsonStr);
+                    document.getElementById('upload-btn').style.display = 'none';
+                    document.getElementById('share-btn').style.display = 'none';
+                    document.getElementById('file-name').style.display = 'none';
+                    document.getElementById('view-mode').style.display = 'inline-block';
+                    renderAll();
+                } catch (err) { console.error(err); renderEmptyState(); }
+            } else { renderEmptyState(); }
+        }
+        
+        loadFromUrl();
+    </script>
+</body>
+</html>
